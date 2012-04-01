@@ -1,0 +1,78 @@
+#!/bin/sh
+
+## command
+CP=/bin/cp
+DIFF=/usr/bin/diff
+AT=/usr/bin/at
+CAT=/bin/cat
+BASENAME=/usr/bin/basename
+
+## functions
+absdir()
+{
+    FILE=$1
+    _DIRNAME=`dirname ${FILE}`
+    RETURN=`cd ${_DIRNAME} && pwd`
+    if [ $? -eq 0 ];then
+        echo $RETURN
+    fi
+}
+
+abspath()
+{
+    FILE="$1"
+    _DIRNAME=`absdir $1`
+    _FILENAME=`${BASENAME} $1`
+    echo "${_DIRNAME}/${_FILENAME}"
+}
+
+## 引数を受け取る
+TARGET_FILE=`abspath "$1"`
+MAINT_FILE=`abspath "$2"`
+BACKUP_FILE=`abspath "$3"`
+AT_TIME="$4"
+
+## 引数のチェック
+if [ $# -ne 4 ]; then
+    echo 'error'
+    exit 1
+fi
+
+## バックアップファイルの diff 確認
+##   => 差分がある場合はエラー出して中止
+BACKUP_DIFF=`$DIFF $BACKUP_FILE $TARGET_FILE`
+if [ $? -ne 0 ] || [ $BACKUP_DIFF ]; then
+  _TARGET_FILE=`${BASENAME}  ${TARGET_FILE}`
+  _BACKUP_FILE=`${BASENAME}  ${BACKUP_FILE}`
+  echo "${_TARGET_FILE} and ${_BACKUP_FILE} are different. Please check them."
+  exit 1
+fi
+
+
+## diff 確認
+echo 'Please check the diff'
+$DIFF -u $TARGET_FILE $MAINT_FILE
+
+## ファイルコピー
+echo 'overwrite? (yes/no) [no]'
+
+read ANSWER
+
+if [ "${ANSWER}" != 'yes' ]; then
+  echo 'not overwritten'
+  exit 1
+fi
+
+## exec copy
+$CP $MAINT_FILE $TARGET_FILE
+
+## at コマンドに登録
+AT_CMD=`absdir $0`/tmpcp_check
+CMD="/bin/sh $AT_CMD $TARGET_FILE $BACKUP_FILE"
+echo --------------------------------------------------
+echo $CMD
+$AT -v $AT_TIME <<< "$CMD"
+echo --------------------------------------------------
+
+
+

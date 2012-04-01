@@ -1,0 +1,93 @@
+#!/bin/sh
+
+CAT=/bin/cat
+SENDMAIL=/usr/sbin/sendmail
+HOSTNAME=/bin/hostname
+BASENAME=/usr/bin/basename
+DIFF=/usr/bin/diff
+
+## メール設定の読み込み
+. tmpcp.conf
+
+
+## functions
+_mail_base()
+{
+    _TO_ADDR=$1
+    _SUBJECT=$2
+    _BODY=$3
+
+    $CAT <<EOM | $SENDMAIL -t -i -f $FROM_ADDR
+From: ${FROM_ADDR}
+To: ${_TO_ADDR}
+Subject: ${_SUBJECT}
+
+${_BODY}
+
+EOM
+}
+
+
+success_mail()
+{
+    _TARGET_FILE=$1
+    _BACKUP_FILE=$2
+    FILENAME=`${BASENAME} ${_TARGET_FILE}`
+
+    _SUCCESS_SUBJECT="[`${HOSTNAME}`][${FILENAME}] The file was rollbacked."
+    _SUCCESS_BODY=`${CAT} <<END_OF_SUCCESS_BODY
+${_TARGET_FILE} was rollbacked.
+
+target_file : ${_TARGET_FILE}
+backup_file : ${_BACKUP_FILE}
+
+END_OF_SUCCESS_BODY
+`
+    # echo $SUCCESS_ADDR $_SUCCESS_SUBJECT $_SUCCESS_BODY
+    _mail_base "$SUCCESS_ADDR" "$_SUCCESS_SUBJECT" "$_SUCCESS_BODY"
+}
+
+warning_mail()
+{
+    _TARGET_FILE=$1
+    _BACKUP_FILE=$2
+    FILENAME=`${BASENAME} ${_TARGET_FILE}`
+
+    _WARNING_SUBJECT="[WARNING][`${HOSTNAME}`][${FILENAME}] The file was NOT rollbacked."
+    _WARNING_BODY=`${CAT} <<END_OF_WARNING_BODY
+${_TARGET_FILE} was NOT rollbacked.
+Please check it.
+
+target_file : ${_TARGET_FILE}
+backup_file : ${_BACKUP_FILE}
+
+END_OF_WARNING_BODY
+`
+    _mail_base "$WARNING_ADDR" "$_WARNING_SUBJECT" "$_WARNING_BODY"
+}
+
+
+## 引数のチェック
+if [ $# -ne 2 ]; then
+    echo 'Invalid arguments'
+    exit 1
+fi
+
+## get arguments
+TARGET_FILE="$1"
+BACKUP_FILE="$2"
+
+
+while :
+do
+  $DIFF $BACKUP_FILE $TARGET_FILE
+
+  if [ $? -eq 0 ]; then
+      success_mail $TARGET_FILE $BACKUP_FILE
+      break
+  fi
+
+  warning_mail $TARGET_FILE $BACKUP_FILE
+  sleep $SLEEP_SEC
+done
+
